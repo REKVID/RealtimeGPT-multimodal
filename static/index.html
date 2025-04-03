@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Голосовой ассистент GPT</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        h1 {
+            color: #333;
+        }
+        
+        .container {
+            margin-top: 30px;
+        }
+        
+        .record-button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 50px;
+            width: 200px;
+        }
+        
+        .record-button.recording {
+            background-color: #f44336;
+        }
+        
+        .status {
+            margin-top: 20px;
+            font-style: italic;
+            color: #666;
+        }
+        
+        .transcript {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            text-align: left;
+        }
+        
+        .response {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e6f7ff;
+            border-radius: 5px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <h1>Голосовой ассистент GPT</h1>
+    
+    <div class="container">
+        <button id="recordButton" class="record-button">Нажмите для записи</button>
+        
+        <div class="status" id="status">Готов к записи</div>
+        
+        <div class="transcript" id="transcript" style="display: none;">
+            <h3>Вы сказали:</h3>
+            <p id="transcriptText"></p>
+        </div>
+        
+        <div class="response" id="response" style="display: none;">
+            <h3>Ответ ассистента:</h3>
+            <p id="responseText"></p>
+        </div>
+    </div>
+    
+    <script src="/static/script.js"></script>
+</body>
+</html> 

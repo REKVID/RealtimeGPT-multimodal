@@ -1,0 +1,43 @@
+# Python кэш
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Файлы среды выполнения
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Директории тестирования и отчеты о покрытии
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+
+# macOS системные файлы
+.DS_Store
+.cursor/
+.AppleDouble
+.LSOverride
+._*
+
+# Файлы журналов
+*.log
+logs/
+
+# Временные файлы
+*.swp
+*~
+
+# Пользовательские настройки VS Code
+.vscode/
+
+# Директория с дистрибутивами
+dist/
+build/
+*.egg-info/ 
