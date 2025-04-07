@@ -26,9 +26,9 @@ def read_instructions(index):
 
 
 # Создаем русскоязычного агента
-russian_agent = Agent(
+client_agent = Agent(
     name="Russian",
-    handoff_description="Русскоговорящий агент.",
+    handoff_description="клиент",
     instructions=read_instructions(0),
     model="gpt-4o-mini",
 )
@@ -36,8 +36,11 @@ russian_agent = Agent(
 # Основной агент
 main_agent = Agent(
     name="Assistant",
-    instructions=read_instructions(0),
+    instructions=prompt_with_handoff_instructions(
+        "Всегда отвечай на русском языке, Если пользователь говорит (чем могу помочь) передай управление клиенту"
+    ),
     model="gpt-4o-mini",
+    handoffs=[client_agent],
 )
 
 
