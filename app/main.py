@@ -9,9 +9,7 @@ from pydub.exceptions import CouldntDecodeError
 import io
 import wave
 import struct
-import json
-import asyncio
-from agents.voice import AudioInput, StreamedAudioInput
+from agents.voice import AudioInput
 from dotenv import load_dotenv
 
 # Изменяем импорты
@@ -37,7 +35,6 @@ SAMPLE_RATE = 24000
 CHANNELS = 1
 SAMPLE_WIDTH = 2  # 16 бит
 MIN_AUDIO_LENGTH = SAMPLE_RATE * 0.5  # Минимум 0.5 секунды
-CHUNK_SIZE = 4096  # Размер буфера для потоковой передачи
 
 # Монтируем статические файлы
 os.makedirs("static", exist_ok=True)
@@ -161,77 +158,52 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     connection_closed = False
 
-    # Создаем голосовой конвейер
-    pipeline = create_voice_pipeline()
-
-    # Создаем потоковый аудиовход
-    streamed_input = StreamedAudioInput()
-
-    # Запускаем трансляцию в отдельном таске
-    streaming_task = None
-
     try:
         while True:
-            # Принимаем команды или данные от клиента
-            message = await websocket.receive()
+            # Получаем аудиоданные от клиента
+            audio_data = await websocket.receive_bytes()
 
-            # Если это бинарные данные (аудио)
-            if "bytes" in message:
-                audio_data = message["bytes"]
+            # Обрабатываем аудио
+            try:
+                samples = process_audio_data(audio_data)
+            except HTTPException as e:
+                await websocket.send_text(f"Ошибка: {e.detail}")
+                continue
+            except Exception as e:
+                await websocket.send_text(f"Ошибка обработки аудио: {str(e)}")
+                continue
 
-                try:
-                    # Обрабатываем аудио
-                    samples = process_audio_data(audio_data)
+            # Создаем экземпляр аудиовхода
+            audio_input = AudioInput(buffer=samples)
 
-                    # Отправляем клиенту статус о начале обработки
-                    await websocket.send_json({"status": "processing"})
+            # Создаем голосовой конвейер
+            pipeline = create_voice_pipeline()
 
-                    # Если есть активная задача, отменяем её перед новым запросом
-                    if streaming_task and not streaming_task.done():
-                        streaming_task.cancel()
-                        try:
-                            await streaming_task
-                        except asyncio.CancelledError:
-                            pass
+            # Запускаем обработку
+            result = await pipeline.run(audio_input)
 
-                    # Создаем новый потоковый ввод для каждого запроса
-                    streamed_input = StreamedAudioInput()
+            # Получаем все аудиоданные и собираем их в один массив
+            all_audio = []
+            async for event in result.stream():
+                if event.type == "voice_stream_event_audio":
+                    all_audio.append(event.data)
 
-                    # Добавляем аудио в потоковый ввод
-                    await streamed_input.add_audio(samples)
+            # Если есть данные, отправляем их как один WAV-файл
+            if all_audio:
+                # Объединяем все фрагменты
+                combined_audio = np.concatenate(all_audio)
 
-                    # Запускаем конвейер
-                    result = await pipeline.run(streamed_input)
+                # Создаем WAV-заголовок для всего аудио
+                header = generate_wav_header(
+                    SAMPLE_RATE, SAMPLE_WIDTH * 8, CHANNELS, len(combined_audio)
+                )
 
-                    # Запускаем асинхронную задачу для трансляции ответа
-                    streaming_task = asyncio.create_task(
-                        stream_result_to_client(websocket, result)
-                    )
+                # Отправляем полный WAV-файл
+                await websocket.send_bytes(header + combined_audio.tobytes())
 
-                except HTTPException as e:
-                    await websocket.send_json({"error": e.detail})
-                except Exception as e:
-                    await websocket.send_json({"error": str(e)})
-
-            # Если это текстовые команды
-            elif "text" in message:
-                command = json.loads(message["text"])
-
-                # Обработка команды остановки
-                if command.get("action") == "stop":
-                    if streaming_task and not streaming_task.done():
-                        streaming_task.cancel()
-                    await websocket.send_json({"status": "stopped"})
-
-    except asyncio.CancelledError:
-        print("WebSocket connection cancelled")
     except Exception as e:
         print(f"WebSocket error: {e}")
     finally:
-        # Отменяем задачу трансляции, если она еще активна
-        if streaming_task and not streaming_task.done():
-            streaming_task.cancel()
-
         if not connection_closed:
             try:
                 await websocket.close()
@@ -241,125 +213,5 @@ async def websocket_endpoint(websocket: WebSocket):
                 pass
 
 
-async def stream_result_to_client(websocket, result):
-    """Потоковая передача результатов от VoicePipeline клиенту"""
-    header_sent = False
-    buffer_size = 0
-    buffer = []
-
-    # Вспомогательная функция для безопасной отправки данных
-    async def safe_send(data, is_bytes=False):
-        try:
-            if is_bytes:
-                await websocket.send_bytes(data)
-            else:
-                await websocket.send_json(data)
-            return True
-        except RuntimeError as e:
-            # Если соединение закрыто, просто логируем и продолжаем
-            if "close message has been sent" in str(e):
-                print("WebSocket уже закрыт, отправка отменена")
-                return False
-            raise
-        except Exception as e:
-            print(f"Ошибка отправки через WebSocket: {e}")
-            return False
-
-    try:
-        async for event in result.stream():
-            # Обработка аудиоданных
-            if event.type == "voice_stream_event_audio":
-                # Накапливаем данные в буфере
-                buffer.append(event.data)
-                buffer_size += len(event.data)
-
-                # Когда достигаем достаточного размера буфера, отправляем данные
-                if buffer_size >= CHUNK_SIZE or len(buffer) >= 5:
-                    # Объединяем буфер
-                    combined_data = np.concatenate(buffer)
-
-                    # Если первый фрагмент, отправляем с WAV-заголовком
-                    if not header_sent:
-                        header = generate_wav_header(
-                            SAMPLE_RATE, SAMPLE_WIDTH * 8, CHANNELS, len(combined_data)
-                        )
-                        if not await safe_send(
-                            header + combined_data.tobytes(), is_bytes=True
-                        ):
-                            return
-                        header_sent = True
-                    else:
-                        if not await safe_send(combined_data.tobytes(), is_bytes=True):
-                            return
-
-                    # Очищаем буфер
-                    buffer = []
-                    buffer_size = 0
-
-            # Обработка событий жизненного цикла
-            elif event.type == "voice_stream_event_lifecycle":
-                # Отправляем информацию о событии жизненного цикла
-                if not await safe_send({"lifecycle": str(event)}):
-                    return
-
-                ########################################################################################
-                # Выводим транскрибированный текст, если доступен
-                if event.type == "voice_stream_event_lifecycle":
-                    print(f"Тип события: {event.type}")
-                    print(f"Событие: {event}")
-
-                    # Безопасный вывод структуры события
-                    try:
-                        print(f"Структура события: {dir(event)}")
-
-                        if hasattr(event, "data"):
-                            print(f"Событие имеет данные: {event.data}")
-                            print(f"Структура data: {dir(event.data)}")
-
-                            # Проверяем возможные поля, содержащие текст
-                            if hasattr(event.data, "text") and event.data.text:
-                                print(f"Текст: {event.data.text}")
-                            elif (
-                                hasattr(event.data, "transcript")
-                                and event.data.transcript
-                            ):
-                                print(f"Транскрипт: {event.data.transcript}")
-                            elif hasattr(event.data, "message") and event.data.message:
-                                print(f"Сообщение: {event.data.message}")
-                    except Exception as e:
-                        print(f"Ошибка при обработке события: {e}")
-                ########################################################################################
-
-            # Обработка ошибок
-            elif event.type == "voice_stream_event_error":
-                if not await safe_send({"error": str(event.error)}):
-                    return
-
-        # Отправляем оставшиеся данные из буфера
-        if buffer:
-            combined_data = np.concatenate(buffer)
-            if not header_sent:
-                header = generate_wav_header(
-                    SAMPLE_RATE, SAMPLE_WIDTH * 8, CHANNELS, len(combined_data)
-                )
-                if not await safe_send(header + combined_data.tobytes(), is_bytes=True):
-                    return
-            else:
-                if not await safe_send(combined_data.tobytes(), is_bytes=True):
-                    return
-
-        # Отправляем сигнал о завершении
-        await safe_send({"status": "completed"})
-
-    except asyncio.CancelledError:
-        # Отправляем сигнал об отмене
-        await safe_send({"status": "cancelled"})
-        raise
-    except Exception as e:
-        # Отправляем информацию об ошибке
-        print(f"Ошибка в потоковой передаче: {e}")
-        await safe_send({"error": str(e)})
-
-
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="localhost", port=8002, reload=True)
+    uvicorn.run("app.main:app", host="localhost", port=8001, reload=True)
