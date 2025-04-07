@@ -1,21 +1,10 @@
 from agents import Agent
 from agents.extensions.handoff_prompt import prompt_with_handoff_instructions
-from agents.voice import SingleAgentVoiceWorkflow, VoicePipeline, VoiceWorkflowBase
+from agents.voice import (
+    SingleAgentVoiceWorkflow,
+    VoicePipeline,
+)
 from pathlib import Path
-import asyncio
-
-
-class CustomVoiceWorkflow(VoiceWorkflowBase):
-    def __init__(self, agent):
-        self.agent = agent
-
-    async def run(self, text: str) -> str:
-        # Выводим транскрибированный текст
-        print(f"Транскрибированный текст: {text}")
-
-        # Отправляем текст агенту
-        result = await self.agent.complete(text)
-        return result.response
 
 
 def read_instructions(index):
@@ -44,4 +33,4 @@ main_agent = Agent(
 
 # Создаем голосовой конвейер
 def create_voice_pipeline():
-    return VoicePipeline(workflow=CustomVoiceWorkflow(main_agent))
+    return VoicePipeline(workflow=SingleAgentVoiceWorkflow(main_agent))
