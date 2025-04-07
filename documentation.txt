@@ -1,0 +1,308 @@
+Quickstart
+Prerequisites
+Make sure you've followed the base quickstart instructions for the Agents SDK, and set up a virtual environment. Then, install the optional voice dependencies from the SDK:
+
+
+pip install 'openai-agents[voice]'
+Concepts
+The main concept to know about is a VoicePipeline, which is a 3 step process:
+
+Run a speech-to-text model to turn audio into text.
+Run your code, which is usually an agentic workflow, to produce a result.
+Run a text-to-speech model to turn the result text back into audio.
+Voice Pipeline
+
+Transcribe (speech-to-text)
+
+Your Code
+
+Text-to-speech
+
+🎤 Audio Input
+
+🎧 Audio Output
+
+Agents
+First, let's set up some Agents. This should feel familiar to you if you've built any agents with this SDK. We'll have a couple of Agents, a handoff, and a tool.
+
+
+import asyncio
+import random
+
+from agents import (
+    Agent,
+    function_tool,
+)
+from agents.extensions.handoff_prompt import prompt_with_handoff_instructions
+
+
+
+@function_tool
+def get_weather(city: str) -> str:
+    """Get the weather for a given city."""
+    print(f"[debug] get_weather called with city: {city}")
+    choices = ["sunny", "cloudy", "rainy", "snowy"]
+    return f"The weather in {city} is {random.choice(choices)}."
+
+
+spanish_agent = Agent(
+    name="Spanish",
+    handoff_description="A spanish speaking agent.",
+    instructions=prompt_with_handoff_instructions(
+        "You're speaking to a human, so be polite and concise. Speak in Spanish.",
+    ),
+    model="gpt-4o-mini",
+)
+
+agent = Agent(
+    name="Assistant",
+    instructions=prompt_with_handoff_instructions(
+        "You're speaking to a human, so be polite and concise. If the user speaks in Spanish, handoff to the spanish agent.",
+    ),
+    model="gpt-4o-mini",
+    handoffs=[spanish_agent],
+    tools=[get_weather],
+)
+Voice pipeline
+We'll set up a simple voice pipeline, using SingleAgentVoiceWorkflow as the workflow.
+
+
+from agents.voice import SingleAgentVoiceWorkflow, VoicePipeline
+pipeline = VoicePipeline(workflow=SingleAgentVoiceWorkflow(agent))
+Run the pipeline
+
+import numpy as np
+import sounddevice as sd
+from agents.voice import AudioInput
+
+# For simplicity, we'll just create 3 seconds of silence
+# In reality, you'd get microphone data
+buffer = np.zeros(24000 * 3, dtype=np.int16)
+audio_input = AudioInput(buffer=buffer)
+
+result = await pipeline.run(audio_input)
+
+# Create an audio player using `sounddevice`
+player = sd.OutputStream(samplerate=24000, channels=1, dtype=np.int16)
+player.start()
+
+# Play the audio stream as it comes in
+async for event in result.stream():
+    if event.type == "voice_stream_event_audio":
+        player.write(event.data)
+Put it all together
+
+import asyncio
+import random
+
+import numpy as np
+import sounddevice as sd
+
+from agents import (
+    Agent,
+    function_tool,
+    set_tracing_disabled,
+)
+from agents.voice import (
+    AudioInput,
+    SingleAgentVoiceWorkflow,
+    VoicePipeline,
+)
+from agents.extensions.handoff_prompt import prompt_with_handoff_instructions
+
+
+@function_tool
+def get_weather(city: str) -> str:
+    """Get the weather for a given city."""
+    print(f"[debug] get_weather called with city: {city}")
+    choices = ["sunny", "cloudy", "rainy", "snowy"]
+    return f"The weather in {city} is {random.choice(choices)}."
+
+
+spanish_agent = Agent(
+    name="Spanish",
+    handoff_description="A spanish speaking agent.",
+    instructions=prompt_with_handoff_instructions(
+        "You're speaking to a human, so be polite and concise. Speak in Spanish.",
+    ),
+    model="gpt-4o-mini",
+)
+
+agent = Agent(
+    name="Assistant",
+    instructions=prompt_with_handoff_instructions(
+        "You're speaking to a human, so be polite and concise. If the user speaks in Spanish, handoff to the spanish agent.",
+    ),
+    model="gpt-4o-mini",
+    handoffs=[spanish_agent],
+    tools=[get_weather],
+)
+
+
+async def main():
+    pipeline = VoicePipeline(workflow=SingleAgentVoiceWorkflow(agent))
+    buffer = np.zeros(24000 * 3, dtype=np.int16)
+    audio_input = AudioInput(buffer=buffer)
+
+    result = await pipeline.run(audio_input)
+
+    # Create an audio player using `sounddevice`
+    player = sd.OutputStream(samplerate=24000, channels=1, dtype=np.int16)
+    player.start()
+
+    # Play the audio stream as it comes in
+    async for event in result.stream():
+        if event.type == "voice_stream_event_audio":
+            player.write(event.data)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+If you run this example, the agent will speak to you! Check out the example in examples/voice/static to see a demo where you can speak to the agent yourself.
+
+
+
+Pipelines and workflows
+VoicePipeline is a class that makes it easy to turn your agentic workflows into a voice app. You pass in a workflow to run, and the pipeline takes care of transcribing input audio, detecting when the audio ends, calling your workflow at the right time, and turning the workflow output back into audio.
+
+Voice Pipeline
+
+Transcribe (speech-to-text)
+
+Your Code
+
+Text-to-speech
+
+🎤 Audio Input
+
+🎧 Audio Output
+
+Configuring a pipeline
+When you create a pipeline, you can set a few things:
+
+The workflow, which is the code that runs each time new audio is transcribed.
+The speech-to-text and text-to-speech models used
+The config, which lets you configure things like:
+A model provider, which can map model names to models
+Tracing, including whether to disable tracing, whether audio files are uploaded, the workflow name, trace IDs etc.
+Settings on the TTS and STT models, like the prompt, language and data types used.
+Running a pipeline
+You can run a pipeline via the run() method, which lets you pass in audio input in two forms:
+
+AudioInput is used when you have a full audio transcript, and just want to produce a result for it. This is useful in cases where you don't need to detect when a speaker is done speaking; for example, when you have pre-recorded audio or in push-to-talk apps where it's clear when the user is done speaking.
+StreamedAudioInput is used when you might need to detect when a user is done speaking. It allows you to push audio chunks as they are detected, and the voice pipeline will automatically run the agent workflow at the right time, via a process called "activity detection".
+Results
+The result of a voice pipeline run is a StreamedAudioResult. This is an object that lets you stream events as they occur. There are a few kinds of VoiceStreamEvent, including:
+
+VoiceStreamEventAudio, which contains a chunk of audio.
+VoiceStreamEventLifecycle, which informs you of lifecycle events like a turn starting or ending.
+VoiceStreamEventError, is an error event.
+
+result = await pipeline.run(input)
+
+async for event in result.stream():
+    if event.type == "voice_stream_event_audio":
+        # play audio
+    elif event.type == "voice_stream_event_lifecycle":
+        # lifecycle
+    elif event.type == "voice_stream_event_error"
+        # error
+    ...
+Best practices
+Interruptions
+The Agents SDK currently does not support any built-in interruptions support for StreamedAudioInput. Instead for every detected turn it will trigger a separate run of your workflow. If you want to handle interruptions inside your application you can listen to the VoiceStreamEventLifecycle events. turn_started will indicate that a new turn was transcribed and processing is beginning. turn_ended will trigger after all the audio was dispatched for a respective turn. You could use these events to mute the microphone of the speaker when the model starts a turn and unmute it after you flushed all the related audio for a turn.
+
+
+Input
+AudioInput dataclass
+Static audio to be used as input for the VoicePipeline.
+
+Source code in src/agents/voice/input.py
+buffer instance-attribute
+
+buffer: NDArray[int16 | float32]
+A buffer containing the audio data for the agent. Must be a numpy array of int16 or float32.
+
+frame_rate class-attribute instance-attribute
+
+frame_rate: int = DEFAULT_SAMPLE_RATE
+The sample rate of the audio data. Defaults to 24000.
+
+sample_width class-attribute instance-attribute
+
+sample_width: int = 2
+The sample width of the audio data. Defaults to 2.
+
+channels class-attribute instance-attribute
+
+channels: int = 1
+The number of channels in the audio data. Defaults to 1.
+
+to_audio_file
+
+to_audio_file() -> tuple[str, BytesIO, str]
+Returns a tuple of (filename, bytes, content_type)
+
+Source code in src/agents/voice/input.py
+to_base64
+
+to_base64() -> str
+Returns the audio data as a base64 encoded string.
+
+Source code in src/agents/voice/input.py
+StreamedAudioInput
+Audio input represented as a stream of audio data. You can pass this to the VoicePipeline and then push audio data into the queue using the add_audio method.
+
+Source code in src/agents/voice/input.py
+add_audio async
+
+add_audio(audio: NDArray[int16 | float32])
+Adds more audio data to the stream.
+
+Parameters:
+
+Name	Type	Description	Default
+audio	NDArray[int16 | float32]	The audio data to add. Must be a numpy array of int16 or float32.	required
+Source code in src/agents/voice/input.py
+
+Pipeline
+VoicePipeline
+An opinionated voice agent pipeline. It works in three steps: 1. Transcribe audio input into text. 2. Run the provided workflow, which produces a sequence of text responses. 3. Convert the text responses into streaming audio output.
+
+Source code in src/agents/voice/pipeline.py
+__init__
+
+__init__(
+    *,
+    workflow: VoiceWorkflowBase,
+    stt_model: STTModel | str | None = None,
+    tts_model: TTSModel | str | None = None,
+    config: VoicePipelineConfig | None = None,
+)
+Create a new voice pipeline.
+
+Parameters:
+
+Name	Type	Description	Default
+workflow	VoiceWorkflowBase	The workflow to run. See VoiceWorkflowBase.	required
+stt_model	STTModel | str | None	The speech-to-text model to use. If not provided, a default OpenAI model will be used.	None
+tts_model	TTSModel | str | None	The text-to-speech model to use. If not provided, a default OpenAI model will be used.	None
+config	VoicePipelineConfig | None	The pipeline configuration. If not provided, a default configuration will be used.	None
+Source code in src/agents/voice/pipeline.py
+run async
+
+run(
+    audio_input: AudioInput | StreamedAudioInput,
+) -> StreamedAudioResult
+Run the voice pipeline.
+
+Parameters:
+
+Name	Type	Description	Default
+audio_input	AudioInput | StreamedAudioInput	The audio input to process. This can either be an AudioInput instance, which is a single static buffer, or a StreamedAudioInput instance, which is a stream of audio data that you can append to.	required
+Returns:
+
+Type	Description
+StreamedAudioResult	A StreamedAudioResult instance. You can use this object to stream audio events and
+StreamedAudioResult	play them out.
+Source code in src/agents/voice/pipeline.py
