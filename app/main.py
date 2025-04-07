@@ -11,6 +11,7 @@ import wave
 import struct
 from agents.voice import AudioInput
 from dotenv import load_dotenv
+import asyncio
 
 # Изменяем импорты
 from agents import set_tracing_disabled
@@ -179,27 +180,39 @@ async def websocket_endpoint(websocket: WebSocket):
             # Создаем голосовой конвейер
             pipeline = create_voice_pipeline()
 
-            # Запускаем обработку
+            # Запускаем обработку и отправляем аудио в реальном времени
             result = await pipeline.run(audio_input)
 
-            # Получаем все аудиоданные и собираем их в один массив
-            all_audio = []
+            # Отправляем статус начала ответа
+            await websocket.send_json({"type": "status", "text": "Начало ответа"})
+
+            # Обрабатываем и отправляем каждый фрагмент аудио по мере поступления
             async for event in result.stream():
                 if event.type == "voice_stream_event_audio":
-                    all_audio.append(event.data)
+                    audio_data = event.data
 
-            # Если есть данные, отправляем их как один WAV-файл
-            if all_audio:
-                # Объединяем все фрагменты
-                combined_audio = np.concatenate(all_audio)
+                    # Отладочная информация о размере фрагмента
+                    print(f"Отправка аудиофрагмента размером {len(audio_data)} сэмплов")
 
-                # Создаем WAV-заголовок для всего аудио
-                header = generate_wav_header(
-                    SAMPLE_RATE, SAMPLE_WIDTH * 8, CHANNELS, len(combined_audio)
-                )
+                    # Создаем WAV-заголовок для фрагмента
+                    header = generate_wav_header(
+                        SAMPLE_RATE, SAMPLE_WIDTH * 8, CHANNELS, len(audio_data)
+                    )
 
-                # Отправляем полный WAV-файл
-                await websocket.send_bytes(header + combined_audio.tobytes())
+                    # Отправляем фрагмент аудио
+                    await websocket.send_bytes(header + audio_data.tobytes())
+
+                    # Небольшая пауза для обработки клиентом
+                    await asyncio.sleep(0.01)
+
+                elif event.type == "voice_stream_event_transcript":
+                    # Отправляем транскрипцию текста
+                    await websocket.send_json(
+                        {"type": "transcript", "text": event.data}
+                    )
+
+            # Отправляем статус завершения ответа
+            await websocket.send_json({"type": "status", "text": "Ответ завершен"})
 
     except Exception as e:
         print(f"WebSocket error: {e}")

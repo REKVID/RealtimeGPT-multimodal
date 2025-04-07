@@ -3,6 +3,9 @@ from agents.extensions.handoff_prompt import prompt_with_handoff_instructions
 from agents.voice import (
     SingleAgentVoiceWorkflow,
     VoicePipeline,
+    VoiceStreamEventAudio,
+    VoiceStreamEventLifecycle,
+    VoicePipelineConfig,
 )
 from pathlib import Path
 from typing import AsyncIterator
@@ -10,11 +13,19 @@ from typing import AsyncIterator
 
 class ExtendedVoiceWorkflow(SingleAgentVoiceWorkflow):
     async def run(self, text: str) -> AsyncIterator[str]:
-        # Выводим транскрибированный текст
-        print(f"Транскрибированный текст: {text}")
+        # Выводим транскрибированный текст от пользователя
+        print(f"\nВходящий текст: {text}")
+
+        # Накапливаем текст для отладки
+        current_response = ""
 
         # Используем стандартный процесс обработки
         async for response in super().run(text):
+            # Добавляем часть ответа к полному тексту
+            current_response += response
+            print(f"Часть ответа модели: {response}")
+
+            # Немедленно отправляем каждую часть на синтез речи
             yield response
 
 
@@ -25,9 +36,9 @@ def read_instructions(index):
     return prompt_with_handoff_instructions(instructions[index].strip())
 
 
-# Создаем русскоязычного агента
+# Создаем агента для клиента
 client_agent = Agent(
-    name="Russian",
+    name="Client",
     handoff_description="клиент",
     instructions=read_instructions(0),
     model="gpt-4o-mini",
@@ -36,9 +47,7 @@ client_agent = Agent(
 # Основной агент
 main_agent = Agent(
     name="Assistant",
-    instructions=prompt_with_handoff_instructions(
-        "Всегда отвечай на русском языке, Если пользователь говорит (чем могу помочь) передай управление клиенту"
-    ),
+    instructions="Всегда отвечай на русском языке, Если пользователь говорит (чем могу помочь) передай управление клиенту",
     model="gpt-4o-mini",
     handoffs=[client_agent],
 )
