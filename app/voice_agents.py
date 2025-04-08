@@ -7,6 +7,7 @@ from agents.voice import (
 )
 from pathlib import Path
 from typing import AsyncIterator
+from .tts_settings import RUSSIAN_TTS_SETTINGS
 
 
 class ExtendedVoiceWorkflow(SingleAgentVoiceWorkflow):
@@ -57,8 +58,11 @@ def create_voice_pipeline(language="ru"):
     Returns:
         VoicePipeline: Настроенный голосовой конвейер
     """
-    # Создаем простой экземпляр VoicePipeline с базовой конфигурацией
-    pipeline = VoicePipeline(workflow=ExtendedVoiceWorkflow(main_agent))
+    # Создаем конфигурацию с настройками TTS
+    config = VoicePipelineConfig(tts_settings=RUSSIAN_TTS_SETTINGS)
+
+    # Создаем конвейер с настроенной конфигурацией
+    pipeline = VoicePipeline(workflow=ExtendedVoiceWorkflow(main_agent), config=config)
 
     # Явно устанавливаем язык для модели Whisper, если поддерживается
     try:
@@ -69,6 +73,7 @@ def create_voice_pipeline(language="ru"):
             pipeline.stt_model.language = language
 
         print(f"Установлен язык транскрипции: {language}")
+        print("Настройки TTS применены:", RUSSIAN_TTS_SETTINGS)
     except Exception as e:
         print(f"Не удалось установить язык для STT модели: {e}")
 
