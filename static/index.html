@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Голосовой ассистент GPT</title>
+    <title>Realtime conversation simulator </title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -19,6 +19,23 @@
         
         .container {
             margin-top: 30px;
+            position: relative;
+            min-height: 400px;
+        }
+        
+        .buttons-container {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            z-index: 10;
+            background: white;
+            padding: 20px 0;
+            text-align: center;
+        }
+        
+        .content-container {
+            padding-top: 100px;
         }
         
         .button {
@@ -33,20 +50,36 @@
             cursor: pointer;
             border-radius: 50px;
             width: 200px;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        #stopButton {
+            visibility: hidden;
+            position: absolute;
         }
         
         .start-button {
             background-color: #4CAF50;
         }
         
+        .start-button:hover {
+            background-color: #45a049;
+        }
+        
         .stop-button {
             background-color: #f44336;
+        }
+        
+        .stop-button:hover {
+            background-color: #da190b;
         }
         
         .status {
             margin-top: 20px;
             font-style: italic;
             color: #666;
+            clear: both;
         }
         
         .transcript {
@@ -70,19 +103,22 @@
     <h1>Голосовой ассистент GPT</h1>
     
     <div class="container">
-        <button id="startButton" class="button start-button">Начать разговор</button>
-        <button id="stopButton" class="button stop-button">Закончить разговор</button>
-        
-        <div class="status" id="status">Готов к разговору</div>
-        
-        <div class="transcript" id="transcript" style="display: none;">
-            <h3>Вы сказали:</h3>
-            <p id="transcriptText"></p>
+        <div class="buttons-container">
+            <button id="startButton" class="button start-button">Начать разговор</button>
+            <button id="stopButton" class="button stop-button">Закончить разговор</button>
+            <div class="status" id="status">Готов к разговору</div>
         </div>
         
-        <div class="response" id="response" style="display: none;">
-            <h3>Ответ ассистента:</h3>
-            <p id="responseText"></p>
+        <div class="content-container">
+            <div class="transcript" id="transcript" style="display: none;">
+                <h3>Вы сказали:</h3>
+                <p id="transcriptText"></p>
+            </div>
+            
+            <div class="response" id="response" style="display: none;">
+                <h3>Ответ ассистента:</h3>
+                <p id="responseText"></p>
+            </div>
         </div>
     </div>
     

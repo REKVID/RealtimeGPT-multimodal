@@ -552,8 +552,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Функция начала разговора
     function startConversation() {
         isConversationActive = true;
-        startButton.style.display = 'none';
-        stopButton.style.display = 'block';
+        startButton.style.visibility = 'hidden';
+        startButton.style.position = 'absolute';
+        stopButton.style.visibility = 'visible';
+        stopButton.style.position = 'static';
         statusElement.textContent = 'Начало разговора...';
         startRecordingWithSpeechDetection();
     }
@@ -561,8 +563,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Функция окончания разговора
     function endConversation() {
         isConversationActive = false;
-        startButton.style.display = 'block';
-        stopButton.style.display = 'none';
+        startButton.style.visibility = 'visible';
+        startButton.style.position = 'static';
+        stopButton.style.visibility = 'hidden';
+        stopButton.style.position = 'absolute';
         
         if (isRecording) {
             stopRecording();
