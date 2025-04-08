@@ -1,9 +1,9 @@
 from agents.voice import TTSModelSettings
 
-# Настройки для русскоязычного TTS
+# Настройки рандом пока что
 RUSSIAN_TTS_SETTINGS = TTSModelSettings(
-    voice="alloy",  # Используем стабильный голос alloy
-    speed=1.5,  # Нормальная скорость речи
+    voice="alloy",
+    speed=1.6,
     instructions="""
     Voice: Clear and professional, maintaining consistent pace and tone
     Pronunciation: Precise and natural Russian pronunciation

@@ -1,7 +1,7 @@
 import os
 import numpy as np
-from fastapi import FastAPI, UploadFile, File, WebSocket, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import FastAPI, WebSocket, HTTPException
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 from pydub import AudioSegment
@@ -25,7 +25,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("voice_app")
 
-# Загружаем переменные окружения из .env файла
 load_dotenv()
 
 # Проверяем наличие API ключа
@@ -33,7 +32,7 @@ if not os.getenv("OPENAI_API_KEY"):
     print("API key miss")
 
 
-# Отключаем трассировку для повышения производительности
+# ТРАСИРОВКА = - скорость
 set_tracing_disabled(True)
 
 app = FastAPI()
@@ -47,14 +46,15 @@ MIN_AUDIO_LENGTH = SAMPLE_RATE * 0.5  # Минимум 0.5 секунды
 # Словарь для хранения постоянных соединений
 active_connections = {}
 
-# Создаем папку для отладочных файлов
+# ВРЕМЕННЫЙ КОД ДЛЯ ОТЛАДКИ
 os.makedirs("debug", exist_ok=True)
 
-# Монтируем статические файлы
+# Монтируем статики
 os.makedirs("static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
+# пока что оставить
 def generate_wav_header(sample_rate, bits_per_sample, channels, n_samples):
     """Генерирует WAV-заголовок для аудио данных"""
     datasize = n_samples * channels * bits_per_sample // 8
@@ -76,6 +76,7 @@ def generate_wav_header(sample_rate, bits_per_sample, channels, n_samples):
     return header
 
 
+# ОБРАБОТКА АУДИО ПОЛНАЯ ПИЗДА ЛУЧШЕ НЕ ТРОГАТЬ до полного рефактора
 def process_audio_data(audio_data, connection_id=None, session=None):
     """Обрабатывает входные аудиоданные и возвращает нормализованные сэмплы"""
     debug_prefix = (
@@ -192,11 +193,11 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     connection_closed = False
 
-    # Создаем уникальный идентификатор для соединения
+    # уникальный идентификатор для соединения
     connection_id = id(websocket)
     logger.info(f"Новое WebSocket соединение: {connection_id}")
 
-    # Создаем голосовой конвейер только один раз для соединения с явным указанием языка
+    # голосовой конвейер только один раз для соединения с явным указанием языка
     if connection_id not in active_connections:
         active_connections[connection_id] = {
             "pipeline": create_voice_pipeline(language="ru"),
@@ -208,7 +209,7 @@ async def websocket_endpoint(websocket: WebSocket):
             # Получаем аудиоданные от клиента
             audio_data = await websocket.receive_bytes()
 
-            # Увеличиваем счетчик сессий
+            # Увеличиваем счетчик сессий (ХУЙ ПОЙМИ ЧТО ЭТО но до рефактора лучше не трогать)
             active_connections[connection_id]["session_count"] += 1
             session_count = active_connections[connection_id]["session_count"]
 
@@ -250,7 +251,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         if event.type == "voice_stream_event_audio":
                             all_audio.append(event.data)
 
-                    # Если есть данные, отправляем их как один WAV-файл
+                    # Если есть данные отправляем их как один WAV
                     if all_audio:
                         try:
                             # Объединяем все фрагменты

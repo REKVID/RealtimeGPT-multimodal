@@ -6,16 +6,15 @@ from agents.voice import (
     VoicePipelineConfig,
 )
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncIterator  # НЕ ВЫЕБАВАТЬСЯ так надо
 from .tts_settings import RUSSIAN_TTS_SETTINGS
 
 
 class ExtendedVoiceWorkflow(SingleAgentVoiceWorkflow):
     async def run(self, text: str) -> AsyncIterator[str]:
-        # Выводим транскрибированный текст
+        # Для отладки
         print(f"Транскрибированный текст: {text}")
 
-        # Используем стандартный процесс обработки
         async for response in super().run(text):
             print(f"Ответ: {response}")
             yield response
@@ -28,9 +27,8 @@ def read_instructions(index):
     return prompt_with_handoff_instructions(instructions[index].strip())
 
 
-# Создаем русскоязычного агента
 client_agent = Agent(
-    name="Russian",
+    name="Client",
     handoff_description="клиент",
     instructions=read_instructions(0),
     model="gpt-4o-mini",
@@ -47,7 +45,6 @@ main_agent = Agent(
 )
 
 
-# Создаем голосовой конвейер
 def create_voice_pipeline(language="ru"):
     """
     Создает голосовой конвейер с настройками для конкретного языка.
@@ -58,17 +55,16 @@ def create_voice_pipeline(language="ru"):
     Returns:
         VoicePipeline: Настроенный голосовой конвейер
     """
-    # Создаем конфигурацию с настройками TTS
+    # конфиг TTS
     config = VoicePipelineConfig(tts_settings=RUSSIAN_TTS_SETTINGS)
 
-    # Создаем конвейер с настроенной конфигурацией
+    # конвеер с конфигом
     pipeline = VoicePipeline(workflow=ExtendedVoiceWorkflow(main_agent), config=config)
 
-    # Явно устанавливаем язык для модели Whisper, если поддерживается
+    # Настройка виспера
     try:
         if hasattr(pipeline.stt_model, "set_language"):
             pipeline.stt_model.set_language(language)
-        # В случае с OpenAI Whisper модель языку нужно задать напрямую
         elif hasattr(pipeline.stt_model, "language"):
             pipeline.stt_model.language = language
 

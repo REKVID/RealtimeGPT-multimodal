@@ -16,7 +16,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let reconnectAttempts = 0;
     const MAX_RECONNECT_ATTEMPTS = 3;
     let audioStream = null; // Храним ссылку на медиа-поток
-    let silenceDetectionTimer = null;
     let audioProcessor = null;
     const SILENCE_THRESHOLD = 0.01; // Порог тишины
     const SILENCE_DURATION = 900; // Длительность тишины в мс для отправки
