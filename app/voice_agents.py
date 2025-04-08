@@ -3,6 +3,7 @@ from agents.extensions.handoff_prompt import prompt_with_handoff_instructions
 from agents.voice import (
     SingleAgentVoiceWorkflow,
     VoicePipeline,
+    VoicePipelineConfig,
 )
 from pathlib import Path
 from typing import AsyncIterator
@@ -15,6 +16,7 @@ class ExtendedVoiceWorkflow(SingleAgentVoiceWorkflow):
 
         # Используем стандартный процесс обработки
         async for response in super().run(text):
+            print(f"Ответ: {response}")
             yield response
 
 
@@ -45,5 +47,29 @@ main_agent = Agent(
 
 
 # Создаем голосовой конвейер
-def create_voice_pipeline():
-    return VoicePipeline(workflow=ExtendedVoiceWorkflow(main_agent))
+def create_voice_pipeline(language="ru"):
+    """
+    Создает голосовой конвейер с настройками для конкретного языка.
+
+    Args:
+        language (str): Код языка для транскрипции (ru, en, и т.д.)
+
+    Returns:
+        VoicePipeline: Настроенный голосовой конвейер
+    """
+    # Создаем простой экземпляр VoicePipeline с базовой конфигурацией
+    pipeline = VoicePipeline(workflow=ExtendedVoiceWorkflow(main_agent))
+
+    # Явно устанавливаем язык для модели Whisper, если поддерживается
+    try:
+        if hasattr(pipeline.stt_model, "set_language"):
+            pipeline.stt_model.set_language(language)
+        # В случае с OpenAI Whisper модель языку нужно задать напрямую
+        elif hasattr(pipeline.stt_model, "language"):
+            pipeline.stt_model.language = language
+
+        print(f"Установлен язык транскрипции: {language}")
+    except Exception as e:
+        print(f"Не удалось установить язык для STT модели: {e}")
+
+    return pipeline
