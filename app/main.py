@@ -13,6 +13,7 @@ import time
 import logging
 from agents.voice import AudioInput
 from dotenv import load_dotenv
+import asyncio
 
 # Изменяем импорты
 from agents import set_tracing_disabled
@@ -186,7 +187,6 @@ async def get_index():
         return f.read()
 
 
-
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -236,48 +236,82 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # Запускаем обработку
             logger.info(f"Запуск обработки для {connection_id}, сессия {session_count}")
-            result = await pipeline.run(audio_input)
 
-            # Получаем все аудиоданные и собираем их в один массив
-            all_audio = []
-            async for event in result.stream():
-                if event.type == "voice_stream_event_audio":
-                    all_audio.append(event.data)
+            max_retries = 3
+            retry_delay = 1.0
 
-            # Если есть данные, отправляем их как один WAV-файл
-            if all_audio:
-                # Объединяем все фрагменты
-                combined_audio = np.concatenate(all_audio)
+            for retry in range(max_retries):
+                try:
+                    result = await pipeline.run(audio_input)
 
-                logger.info(
-                    f"Отправка ответа для {connection_id}, сессия {session_count}, размер: {len(combined_audio)} сэмплов"
-                )
+                    # Получаем все аудиоданные и собираем их в один массив
+                    all_audio = []
+                    async for event in result.stream():
+                        if event.type == "voice_stream_event_audio":
+                            all_audio.append(event.data)
 
-                # Создаем WAV-заголовок для всего аудио
-                header = generate_wav_header(
-                    SAMPLE_RATE, SAMPLE_WIDTH * 8, CHANNELS, len(combined_audio)
-                )
+                    # Если есть данные, отправляем их как один WAV-файл
+                    if all_audio:
+                        try:
+                            # Объединяем все фрагменты
+                            combined_audio = np.concatenate(all_audio)
 
-                # Отправляем полный WAV-файл
-                await websocket.send_bytes(header + combined_audio.tobytes())
-            else:
-                logger.warning(
-                    f"Нет аудио данных для ответа, соединение {connection_id}, сессия {session_count}"
-                )
+                            # Создаем WAV заголовок
+                            wav_header = generate_wav_header(
+                                SAMPLE_RATE, 16, CHANNELS, len(combined_audio)
+                            )
+
+                            # Отправляем аудио клиенту
+                            await websocket.send_bytes(
+                                wav_header + combined_audio.tobytes()
+                            )
+                            logger.info(
+                                f"Аудио успешно отправлено клиенту, размер: {len(combined_audio)} сэмплов"
+                            )
+                            break  # Выходим из цикла повторных попыток при успехе
+
+                        except Exception as e:
+                            logger.error(
+                                f"Ошибка при отправке аудио (попытка {retry + 1}/{max_retries}): {str(e)}"
+                            )
+                            if retry < max_retries - 1:
+                                await asyncio.sleep(retry_delay)
+                                retry_delay *= 2  # Увеличиваем задержку между попытками
+                            else:
+                                # Если все попытки исчерпаны, отправляем текстовое сообщение
+                                await websocket.send_text(
+                                    "Ошибка при отправке аудио-ответа. Попробуйте еще раз."
+                                )
+                                logger.error(
+                                    f"Не удалось отправить аудио после {max_retries} попыток"
+                                )
+
+                    break  # Выходим из цикла повторных попыток при успехе
+
+                except Exception as e:
+                    logger.error(
+                        f"Ошибка при обработке запроса (попытка {retry + 1}/{max_retries}): {str(e)}"
+                    )
+                    if retry < max_retries - 1:
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2
+                    else:
+                        await websocket.send_text(
+                            f"Ошибка при обработке запроса: {str(e)}"
+                        )
+                        logger.error(
+                            f"Не удалось обработать запрос после {max_retries} попыток"
+                        )
 
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-    finally:
-        if connection_id in active_connections:
-            logger.info(f"Закрытие соединения {connection_id}")
-            del active_connections[connection_id]
+        logger.error(f"WebSocket error: {str(e)}")
         if not connection_closed:
-            try:
-                await websocket.close()
-                connection_closed = True
-            except RuntimeError:
-                # Игнорируем ошибку, если соединение уже закрыто
-                pass
+            await websocket.close()
+    finally:
+        # Очищаем ресурсы при закрытии соединения
+        logger.info(f"Закрытие соединения {connection_id}")
+        if connection_id in active_connections:
+            del active_connections[connection_id]
 
 
 if __name__ == "__main__":

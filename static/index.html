@@ -21,8 +21,7 @@
             margin-top: 30px;
         }
         
-        .record-button {
-            background-color: #4CAF50;
+        .button {
             border: none;
             color: white;
             padding: 15px 32px;
@@ -36,7 +35,11 @@
             width: 200px;
         }
         
-        .record-button.recording {
+        .start-button {
+            background-color: #4CAF50;
+        }
+        
+        .stop-button {
             background-color: #f44336;
         }
         
@@ -67,9 +70,10 @@
     <h1>Голосовой ассистент GPT</h1>
     
     <div class="container">
-        <button id="recordButton" class="record-button">Нажмите для записи</button>
+        <button id="startButton" class="button start-button">Начать разговор</button>
+        <button id="stopButton" class="button stop-button">Закончить разговор</button>
         
-        <div class="status" id="status">Готов к записи</div>
+        <div class="status" id="status">Готов к разговору</div>
         
         <div class="transcript" id="transcript" style="display: none;">
             <h3>Вы сказали:</h3>
