@@ -3,9 +3,6 @@ from agents.extensions.handoff_prompt import prompt_with_handoff_instructions
 from agents.voice import (
     SingleAgentVoiceWorkflow,
     VoicePipeline,
-    VoiceStreamEventAudio,
-    VoiceStreamEventLifecycle,
-    VoicePipelineConfig,
 )
 from pathlib import Path
 from typing import AsyncIterator

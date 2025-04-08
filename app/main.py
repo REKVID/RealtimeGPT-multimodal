@@ -1,17 +1,15 @@
 import os
 import numpy as np
-from fastapi import FastAPI, UploadFile, File, WebSocket, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import FastAPI, WebSocket, HTTPException
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
 import io
-import wave
 import struct
 from agents.voice import AudioInput
 from dotenv import load_dotenv
-import asyncio
 
 # Изменяем импорты
 from agents import set_tracing_disabled
@@ -95,65 +93,6 @@ async def get_index():
         return f.read()
 
 
-@app.post("/process-audio/")
-async def process_audio(audio: UploadFile = File(...)):
-    # Читаем аудиофайл
-    audio_data = await audio.read()
-
-    # Обрабатываем аудио
-    try:
-        samples = process_audio_data(audio_data)
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(500, f"Ошибка обработки аудио: {str(e)}")
-
-    # Создаем экземпляр аудиовхода
-    audio_input = AudioInput(buffer=samples)
-
-    # Создаем голосовой конвейер
-    pipeline = create_voice_pipeline()
-
-    # Запускаем обработку
-    result = await pipeline.run(audio_input)
-
-    # Получаем все аудиоданные и собираем их в один массив
-    all_audio = []
-    async for event in result.stream():
-        if event.type == "voice_stream_event_audio":
-            all_audio.append(event.data)
-
-    # Если есть данные, отправляем их как один WAV-файл
-    if all_audio:
-        # Объединяем все фрагменты
-        combined_audio = np.concatenate(all_audio)
-
-        # Создаем WAV-файл в памяти
-        wav_io = io.BytesIO()
-        with wave.open(wav_io, "wb") as wav_file:
-            wav_file.setnchannels(CHANNELS)
-            wav_file.setsampwidth(SAMPLE_WIDTH)
-            wav_file.setframerate(SAMPLE_RATE)
-            wav_file.writeframes(combined_audio.tobytes())
-
-        # Возвращаемся в начало буфера
-        wav_io.seek(0)
-
-        # Возвращаем WAV-файл
-        return StreamingResponse(
-            wav_io,
-            media_type="audio/wav",
-            headers={"Content-Disposition": "attachment; filename=response.wav"},
-        )
-
-    # Если нет данных, возвращаем пустой ответ
-    return StreamingResponse(
-        io.BytesIO(b""),
-        media_type="audio/wav",
-        headers={"Content-Disposition": "attachment; filename=response.wav"},
-    )
-
-
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -180,39 +119,27 @@ async def websocket_endpoint(websocket: WebSocket):
             # Создаем голосовой конвейер
             pipeline = create_voice_pipeline()
 
-            # Запускаем обработку и отправляем аудио в реальном времени
+            # Запускаем обработку
             result = await pipeline.run(audio_input)
 
-            # Отправляем статус начала ответа
-            await websocket.send_json({"type": "status", "text": "Начало ответа"})
-
-            # Обрабатываем и отправляем каждый фрагмент аудио по мере поступления
+            # Получаем все аудиоданные и собираем их в один массив
+            all_audio = []
             async for event in result.stream():
                 if event.type == "voice_stream_event_audio":
-                    audio_data = event.data
+                    all_audio.append(event.data)
 
-                    # Отладочная информация о размере фрагмента
-                    print(f"Отправка аудиофрагмента размером {len(audio_data)} сэмплов")
+            # Если есть данные, отправляем их как один WAV-файл
+            if all_audio:
+                # Объединяем все фрагменты
+                combined_audio = np.concatenate(all_audio)
 
-                    # Создаем WAV-заголовок для фрагмента
-                    header = generate_wav_header(
-                        SAMPLE_RATE, SAMPLE_WIDTH * 8, CHANNELS, len(audio_data)
-                    )
+                # Создаем WAV-заголовок для всего аудио
+                header = generate_wav_header(
+                    SAMPLE_RATE, SAMPLE_WIDTH * 8, CHANNELS, len(combined_audio)
+                )
 
-                    # Отправляем фрагмент аудио
-                    await websocket.send_bytes(header + audio_data.tobytes())
-
-                    # Небольшая пауза для обработки клиентом
-                    await asyncio.sleep(0.01)
-
-                elif event.type == "voice_stream_event_transcript":
-                    # Отправляем транскрипцию текста
-                    await websocket.send_json(
-                        {"type": "transcript", "text": event.data}
-                    )
-
-            # Отправляем статус завершения ответа
-            await websocket.send_json({"type": "status", "text": "Ответ завершен"})
+                # Отправляем полный WAV-файл
+                await websocket.send_bytes(header + combined_audio.tobytes())
 
     except Exception as e:
         print(f"WebSocket error: {e}")
