@@ -11,6 +11,19 @@ from .tts_settings import RUSSIAN_TTS_SETTINGS
 
 
 class ExtendedVoiceWorkflow(SingleAgentVoiceWorkflow):
+    """Расширенный рабочий процесс для обработки голосовых команд.
+
+    Этот класс расширяет стандартный SingleAgentVoiceWorkflow для добавления
+    дополнительной функциональности, такой как логирование транскрибированного
+    текста и ответов.
+
+    Args:
+        text (str): Транскрибированный текст для обработки.
+
+    Yields:
+        str: Сгенерированные ответы от агента.
+    """
+
     async def run(self, text: str) -> AsyncIterator[str]:
         # Выводим транскрибированный текст
         print(f"Транскрибированный текст: {text}")
@@ -21,19 +34,24 @@ class ExtendedVoiceWorkflow(SingleAgentVoiceWorkflow):
             yield response
 
 
-def read_instructions(index):
+def read_instructions():
+    """Читает инструкции из файла.
+
+    Returns:
+        str: Полный текст инструкций с применением handoff_instructions.
+    """
     instructions_path = Path(__file__).parent.parent / "instructions.txt"
     with open(instructions_path, "r", encoding="utf-8") as f:
-        instructions = f.readlines()
-    return prompt_with_handoff_instructions(instructions[index].strip())
+        instructions = f.read()
+    return prompt_with_handoff_instructions(instructions)
 
 
 client_agent = Agent(
-    name="Client",
+    name="Клиент",
     handoff_description="клиент",
-    instructions=read_instructions(0),
-    model="gpt-4o-mini",
-    model_settings=ModelSettings(max_tokens=100),
+    instructions=read_instructions(),
+    model="gpt-4o",
+    model_settings=ModelSettings(max_tokens=1000),
 )
 
 main_agent = Agent(
@@ -41,22 +59,31 @@ main_agent = Agent(
     instructions=prompt_with_handoff_instructions(
         "Всегда отвечай на русском языке, Если пользователь говорит (чем могу помочь) передай управление клиенту"
     ),
-    model="gpt-4o-mini",
+    model="gpt-4o",
     handoffs=[client_agent],
-    model_settings=ModelSettings(max_tokens=100),
+    model_settings=ModelSettings(max_tokens=1000),
 )
 
 
 def create_voice_pipeline(language="ru"):
-    """
-    Создает голосовой конвейер с настройками для конкретного языка.
+    """Создает настроенный голосовой конвейер для обработки аудио.
 
     Args:
-        language (str): Код языка
+        language (str, optional): Код языка для настройки STT и TTS моделей.
+            По умолчанию "ru".
 
     Returns:
-        VoicePipeline: Настроенный голосовой конвейер
+        VoicePipeline: Настроенный голосовой конвейер с указанным языком
+            и соответствующими настройками TTS.
+
+    Raises:
+        Exception: Если не удалось установить язык для STT модели.
+
+    Example:
+        >>> pipeline = create_voice_pipeline("ru")
+        >>> result = await pipeline.run(audio_input)
     """
+
     # Создаем конфигурацию с настройками TTS
     config = VoicePipelineConfig(tts_settings=RUSSIAN_TTS_SETTINGS)
 

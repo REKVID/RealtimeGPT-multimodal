@@ -40,6 +40,5 @@ logs/
 # Директория с дистрибутивами
 dist/
 build/
-*.egg-info/ 
-
-debug/
+*.egg-info/
+example_google.py

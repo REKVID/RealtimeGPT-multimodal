@@ -20,4 +20,3 @@ MIN_AUDIO_LENGTH = SAMPLE_RATE * 0.5  # Минимум 0.5 секунды
 
 # Пути к директориям
 STATIC_DIR = "static"
-DEBUG_DIR = "debug"

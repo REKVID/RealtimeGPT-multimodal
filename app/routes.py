@@ -8,20 +8,20 @@ from fastapi.staticfiles import StaticFiles
 
 from agents.voice import AudioInput
 
-from .config import STATIC_DIR, SAMPLE_RATE, CHANNELS
+from .config import STATIC_DIR 
 from .audio import process_audio_data, generate_wav_header
 from .voice_agents import create_voice_pipeline
 
 # Настройка логирования
 logger = logging.getLogger("voice_app")
 
-# Инициализация FastAPI
+
 app = FastAPI()
 
 # Словарь для хранения постоянных соединений
 active_connections = {}
 
-# Монтируем статические файлы
+# Монтируем статическ
 os.makedirs(STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -35,10 +35,27 @@ async def get_index():
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    """Обработчик WebSocket соединений для аудио взаимодействия.
+
+    Этот эндпоинт обрабатывает входящие аудио потоки, отправляет их
+    на обработку голосовому агенту и возвращает сгенерированные
+    аудио ответы.
+
+    Args:
+        websocket (WebSocket): WebSocket соединение.
+
+    Raises:
+        HTTPException: При ошибках обработки аудио.
+
+    Example:
+        >>> async with websocket.connect("ws://localhost:8000/ws") as ws:
+        ...     await ws.send_bytes(audio_data)
+        ...     response = await ws.receive_bytes()
+    """
     await websocket.accept()
     connection_closed = False
 
-    # Создаем уникальный идентификатор для соединения
+    # Создаем уникальный идентификатор для соединения (ХУЙНЯ НО ПОКА ЧТО НЕ ТРОГАТЬ)
     connection_id = id(websocket)
     logger.info(f"Новое WebSocket соединение: {connection_id}")
 
@@ -64,7 +81,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # Обрабатываем аудио
             try:
-                samples = process_audio_data(audio_data, connection_id, session_count)
+                samples = process_audio_data(audio_data)
             except HTTPException as e:
                 logger.error(f"HTTP ошибка при обработке аудио: {e.detail}")
                 await websocket.send_text(f"Ошибка: {e.detail}")
@@ -103,9 +120,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             combined_audio = np.concatenate(all_audio)
 
                             # Создаем WAV заголовок
-                            wav_header = generate_wav_header(
-                                SAMPLE_RATE, 16, CHANNELS, len(combined_audio)
-                            )
+                            wav_header = generate_wav_header(len(combined_audio))
 
                             # Отправляем аудио клиенту
                             await websocket.send_bytes(

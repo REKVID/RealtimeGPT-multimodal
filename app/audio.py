@@ -1,11 +1,25 @@
 """
-Модуль обработки аудио данных
+Модуль обработки аудио данных.
+
+Этот модуль предоставляет функции для обработки аудио данных, включая
+генерацию WAV-заголовков и нормализацию аудио сэмплов. Поддерживает
+различные форматы входных данных и обеспечивает их конвертацию в
+стандартный формат для дальнейшей обработки.
+
+Attributes:
+    SAMPLE_RATE (int): Частота дискретизации в Гц.
+    CHANNELS (int): Количество аудио каналов.
+    SAMPLE_WIDTH (int): Ширина сэмпла в байтах.
+    MIN_AUDIO_LENGTH (int): Минимальная длина аудио в сэмплах.
+
+Example:
+    >>> header = generate_wav_header(24000, 16, 1, 48000)
+    >>> samples = process_audio_data(audio_data)
 """
 
 import io
 import wave
 import struct
-import time
 import logging
 import numpy as np
 from pydub import AudioSegment
@@ -18,41 +32,70 @@ from .config import SAMPLE_RATE, CHANNELS, SAMPLE_WIDTH, MIN_AUDIO_LENGTH
 logger = logging.getLogger("voice_app")
 
 
-def generate_wav_header(sample_rate, bits_per_sample, channels, n_samples):
-    """Генерирует WAV-заголовок для аудио данных"""
-    datasize = n_samples * channels * bits_per_sample // 8
+def generate_wav_header(n_samples):
+    """
+    sample_rate = SAMPLE_RATE
+    bits_per_sample = 16
+    channels = CHANNELS
+    n_samples = len(combined_audio) - dimanic !!!!
+    bits_per_sample = 16
+
+
+    Генерирует WAV-заголовок для аудио данных.
+
+    Args:
+        sample_rate (int): Частота дискретизации в Гц.
+        bits_per_sample (int): Количество бит на сэмпл.
+        channels (int): Количество аудио каналов.
+        n_samples (int): Количество сэмплов в аудио данных.
+
+    Returns:
+        bytes: WAV-заголовок в виде байтовой строки.
+
+    Example:
+        >>> header = generate_wav_header(24000, 16, 1, 48000)
+        >>> with open('audio.wav', 'wb') as f:
+        ...     f.write(header + audio_data)
+    """
+    datasize = n_samples * CHANNELS * 2
     header = bytes("RIFF", "ascii")
     header += struct.pack("<L", 36 + datasize)
     header += bytes("WAVE", "ascii")
     header += bytes("fmt ", "ascii")
     header += struct.pack("<L", 16)
     header += struct.pack("<H", 1)  # PCM формат
-    header += struct.pack("<H", channels)
-    header += struct.pack("<L", sample_rate)
-    header += struct.pack(
-        "<L", sample_rate * channels * bits_per_sample // 8
-    )  # байт/сек
-    header += struct.pack("<H", channels * bits_per_sample // 8)  # блок выравнивания
-    header += struct.pack("<H", bits_per_sample)
+    header += struct.pack("<H", CHANNELS)
+    header += struct.pack("<L", SAMPLE_RATE)
+    header += struct.pack("<L", SAMPLE_RATE * CHANNELS * 2)
+    header += struct.pack("<H", CHANNELS * 2)
+    header += struct.pack("<H", 16)
     header += bytes("data", "ascii")
     header += struct.pack("<L", datasize)
     return header
 
 
-def process_audio_data(audio_data, connection_id=None, session=None):
-    """Обрабатывает входные аудиоданные и возвращает нормализованные сэмплы"""
-    debug_prefix = (
-        f"debug/audio_{connection_id}_{session}"
-        if connection_id and session
-        else "debug/audio"
-    )
-    timestamp = int(time.time())
+def process_audio_data(audio_data):
+    """Обрабатывает входные аудиоданные и возвращает нормализованные сэмплы.
 
+    Функция поддерживает различные форматы входных данных (WAV, MP3, OGG, FLAC)
+    и конвертирует их в стандартный формат с заданными параметрами.
+
+    Args:
+        audio_data (bytes): Входные аудиоданные в любом поддерживаемом формате.
+        connection_id (Optional[str]): Идентификатор соединения для отладки.
+        session (Optional[int]): Номер сессии для отладки.
+
+    Returns:
+        numpy.ndarray: Массив нормализованных аудио сэмплов.
+
+    Raises:
+        HTTPException: Если не удалось декодировать аудио или длина слишком мала.
+
+    Example:
+        >>> samples = process_audio_data(audio_data)
+        >>> print(f"Получено {len(samples)} сэмплов")
+    """
     try:
-        # Сохраняем исходный формат аудио для диагностики
-        with open(f"{debug_prefix}_raw_{timestamp}.bin", "wb") as f:
-            f.write(audio_data)
-
         # Определяем тип файла по первым байтам
         file_type = ""
         if len(audio_data) > 10:
@@ -74,40 +117,29 @@ def process_audio_data(audio_data, connection_id=None, session=None):
             # Предполагаем, что это сырые PCM данные
             logger.info("Принимаем данные как сырые PCM, добавляем WAV заголовок")
 
-            # Проверяем, что данные могут быть PCM Int16
-            try:
-                # Преобразуем в numpy массив для проверки
+            # Создаем временный WAV-файл в памяти
+            wav_buffer = io.BytesIO()
+            with wave.open(wav_buffer, "wb") as wav_file:
+                wav_file.setnchannels(CHANNELS)
+                wav_file.setsampwidth(SAMPLE_WIDTH)
+                wav_file.setframerate(SAMPLE_RATE)
+                wav_file.writeframes(audio_data)
 
-                # Создаем временный WAV-файл
-                with wave.open(
-                    f"{debug_prefix}_with_header_{timestamp}.wav", "wb"
-                ) as wav_file:
-                    wav_file.setnchannels(CHANNELS)
-                    wav_file.setsampwidth(SAMPLE_WIDTH)
-                    wav_file.setframerate(SAMPLE_RATE)
-                    wav_file.writeframes(audio_data)
+            # Читаем как AudioSegment
+            wav_buffer.seek(0)
+            audio_segment = AudioSegment.from_wav(wav_buffer)
 
-                # Читаем как AudioSegment
-                audio_segment = AudioSegment.from_file(
-                    f"{debug_prefix}_with_header_{timestamp}.wav", format="wav"
-                )
-            except Exception as e:
-                logger.error(f"Не удалось обработать как PCM данные: {e}")
-                # Продолжаем, пытаясь обработать как обычный файл
-
-        # Конвертируем аудио в нужный формат
-        audio_segment = AudioSegment.from_file(io.BytesIO(audio_data))
-        audio_segment = (
-            audio_segment.set_frame_rate(SAMPLE_RATE)
-            .set_channels(CHANNELS)
-            .set_sample_width(SAMPLE_WIDTH)
-        )
+        else:
+            # Конвертируем аудио в нужный формат
+            audio_segment = AudioSegment.from_file(io.BytesIO(audio_data))
+            audio_segment = (
+                audio_segment.set_frame_rate(SAMPLE_RATE)
+                .set_channels(CHANNELS)
+                .set_sample_width(SAMPLE_WIDTH)
+            )
 
         # Нормализуем уровень громкости
         audio_segment = audio_segment.normalize()
-
-        # Сохраняем конвертированное аудио для диагностики
-        audio_segment.export(f"{debug_prefix}_converted_{timestamp}.wav", format="wav")
 
     except CouldntDecodeError:
         logger.error(
