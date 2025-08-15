@@ -9,13 +9,6 @@
 Attributes:
     SAMPLE_RATE (int): Частота дискретизации в Гц.
     CHANNELS (int): Количество аудио каналов.
-    SAMPLE_WIDTH (int): Ширина сэмпла в байтах.
-    MIN_AUDIO_LENGTH (int): Минимальная длина аудио в сэмплах.
-
-Example:
-    >>> header = generate_wav_header(24000, 16, 1, 48000)
-    >>> samples = process_audio_data(audio_data)
-"""
 
 import io
 import wave
